@@ -22,7 +22,7 @@ export class DatabaseProvisionService {
     await adminDataSource.initialize();
 
     try {
-      const dbExists = await adminDataSource.query(
+      const dbExists: unknown[] = await adminDataSource.query(
         'SELECT 1 FROM pg_database WHERE datname = $1',
         [nomeBanco],
       );

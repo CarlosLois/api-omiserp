@@ -1,9 +1,15 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { CoreService } from '../core/services/core.service';
 import { TenantConnectionService } from '../core/services/tenant-connection.service';
 import { Usuario } from '../tenant/entities/usuario.entity';
+import { criarMensagem } from '../common/messages/message.types';
 
 @Injectable()
 export class AuthService {
@@ -25,7 +31,8 @@ export class AuthService {
       }),
     );
 
-    const usuarioRegistro = await this.coreService.findUsuarioByEmail(credencial);
+    const usuarioRegistro =
+      await this.coreService.findUsuarioByEmail(credencial);
 
     if (!usuarioRegistro) {
       this.logger.warn(
@@ -50,7 +57,8 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais invalidas');
     }
 
-    const dataSource = await this.tenantConnectionService.getDataSource(cliente);
+    const dataSource =
+      await this.tenantConnectionService.getDataSource(cliente);
     const usuarioRepo = dataSource.getRepository(Usuario);
 
     const usuario = await usuarioRepo
@@ -81,10 +89,34 @@ export class AuthService {
 
       return {
         status: 'SET_PASSWORD_REQUIRED',
+        mensagens: [
+          criarMensagem(
+            'Definicao de senha obrigatoria no primeiro acesso.',
+            'Informe e confirme uma nova senha para continuar.',
+            'AUTH_SET_PASSWORD_REQUIRED',
+          ),
+        ],
       };
     }
 
-    const senhaValida = await bcrypt.compare(senha, usuario.usuarioSenha);
+    const senhaInformada = senha.trim();
+
+    if (senhaInformada.length < 6) {
+      throw new BadRequestException({
+        mensagens: [
+          criarMensagem(
+            'A senha deve ter no minimo 6 caracteres.',
+            'Informe a senha cadastrada para este usuario.',
+            'AUTH_PASSWORD_MIN_LENGTH',
+          ),
+        ],
+      });
+    }
+
+    const senhaValida = await bcrypt.compare(
+      senhaInformada,
+      usuario.usuarioSenha,
+    );
 
     if (!senhaValida) {
       this.logger.warn(
@@ -119,6 +151,9 @@ export class AuthService {
       access_token: token,
       usuario: usuario.usuarioNome,
       empresa: cliente.clienteRegRazao,
+      mensagens: [
+        criarMensagem('Login realizado com sucesso.', '', 'AUTH_LOGIN_SUCCESS'),
+      ],
     };
   }
 }

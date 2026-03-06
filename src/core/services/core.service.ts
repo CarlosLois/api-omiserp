@@ -102,7 +102,9 @@ export class CoreService {
       .createQueryBuilder()
       .delete()
       .from(UsuarioRegistro)
-      .where('usuarioreg_clienteregid = :clienteId', { clienteId: normalizedId })
+      .where('usuarioreg_clienteregid = :clienteId', {
+        clienteId: normalizedId,
+      })
       .execute();
 
     await this.clienteRepo.delete(normalizedId);

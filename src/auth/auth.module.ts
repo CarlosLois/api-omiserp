@@ -6,12 +6,14 @@ import { AuthController } from './auth.controller';
 import { CoreModule } from '../core/core.module';
 import { JwtStrategy } from './jwt.strategy';
 
+const JWT_SECRET = process.env.JWT_SECRET ?? 'insecure-dev-secret';
+
 @Module({
   imports: [
     CoreModule,
     PassportModule,
     JwtModule.register({
-      secret: 'segredo-super-forte',
+      secret: JWT_SECRET,
       signOptions: { expiresIn: '8h' },
     }),
   ],

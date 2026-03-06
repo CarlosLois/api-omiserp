@@ -1,14 +1,13 @@
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { CoreService } from '../core/services/core.service';
 import { TenantConnectionService } from '../core/services/tenant-connection.service';
 import { Usuario } from '../tenant/entities/usuario.entity';
-import { getTenantDataSource, getTenantId } from '../tenant/utils/get-datasource';
+import {
+  getTenantDataSource,
+  getTenantId,
+} from '../tenant/utils/get-datasource';
+import { criarMensagem } from '../common/messages/message.types';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { DefinirSenhaDto } from './dto/definir-senha.dto';
 
@@ -70,7 +69,8 @@ export class UsuarioService {
     }
 
     const cliente = usuarioRegistro.cliente;
-    const dataSource = await this.tenantConnectionService.getDataSource(cliente);
+    const dataSource =
+      await this.tenantConnectionService.getDataSource(cliente);
     const usuarioRepo = dataSource.getRepository(Usuario);
 
     const usuario = await usuarioRepo
@@ -97,6 +97,13 @@ export class UsuarioService {
 
     return {
       message: 'Senha definida com sucesso',
+      mensagens: [
+        criarMensagem(
+          'Senha definida com sucesso.',
+          'Utilize a nova senha para realizar o login.',
+          'USR_SET_PASSWORD_OK',
+        ),
+      ],
     };
   }
 }

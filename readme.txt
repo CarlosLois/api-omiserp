@@ -12,3 +12,4 @@ Instalar CLI do NestJS
 
 Para rodar api
 - npm run start:dev
+- npm --prefix api-gestao run start:dev

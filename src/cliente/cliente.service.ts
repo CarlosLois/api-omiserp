@@ -11,6 +11,9 @@ import { Usuario } from '../tenant/entities/usuario.entity';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { DatabaseProvisionService } from '../core/services/database-provision.service';
 import { DataSource, QueryRunner } from 'typeorm';
+import { criarMensagem } from '../common/messages/message.types';
+
+type IdRow<Key extends string> = Record<Key, number>;
 
 @Injectable()
 export class ClienteService {
@@ -40,19 +43,63 @@ export class ClienteService {
     return valor.trim().replace(/\s+/g, ' ').toUpperCase();
   }
 
+  private normalizarEmail(valor?: string | null): string | null {
+    if (!valor) {
+      return null;
+    }
+    return valor.trim().toLowerCase();
+  }
+
+  private formatarCnpjCpf(valor?: string | null): string {
+    const digits = String(valor ?? '')
+      .replace(/\D/g, '')
+      .slice(0, 14);
+
+    if (digits.length <= 11) {
+      return digits
+        .replace(/^(\d{3})(\d)/, '$1.$2')
+        .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+        .replace(/\.(\d{3})(\d)/, '.$1-$2');
+    }
+
+    return digits
+      .replace(/^(\d{2})(\d)/, '$1.$2')
+      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2')
+      .replace(/(\d{4})(\d)/, '$1-$2');
+  }
+
+  private formatarCep(valor?: string | null): string | null {
+    if (!valor) {
+      return null;
+    }
+
+    const digits = String(valor).replace(/\D/g, '').slice(0, 8);
+
+    if (!digits) {
+      return null;
+    }
+
+    if (digits.length <= 5) {
+      return digits;
+    }
+
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  }
+
   private normalizarPayload(dto: CreateClienteDto) {
     return {
       razao: this.normalizarTexto(dto.razao) ?? '',
       nomeFantasia: this.normalizarTexto(dto.nomeFantasia) ?? '',
-      cnpj: (dto.cnpj ?? '').replace(/\D/g, ''),
+      cnpj: this.formatarCnpjCpf(dto.cnpj),
       adminNome: this.normalizarTexto(dto.adminNome) ?? '',
-      adminLogin: this.normalizarTexto(dto.adminLogin) ?? '',
-      adminEmail: this.normalizarTexto(dto.adminEmail) ?? '',
+      adminLogin: this.normalizarEmail(dto.adminLogin) ?? '',
+      adminEmail: this.normalizarEmail(dto.adminEmail) ?? '',
       adminSenha: dto.adminSenha?.trim() || undefined,
       endereco: {
         cidade: this.normalizarTexto(dto.endereco?.cidade) ?? '',
         bairro: this.normalizarTexto(dto.endereco?.bairro) ?? '',
-        cep: this.normalizarTexto(dto.endereco?.cep),
+        cep: this.formatarCep(dto.endereco?.cep),
         tipoLogradouro: this.normalizarTexto(
           dto.endereco?.tipoLogradouro ?? dto.endereco?.pessoa_tipologradouro,
         ),
@@ -65,12 +112,20 @@ export class ClienteService {
       contato: dto.contato
         ? {
             nome: this.normalizarTexto(dto.contato.nome),
-            email: this.normalizarTexto(dto.contato.email),
+            email: this.normalizarEmail(dto.contato.email),
             telefone: this.normalizarTexto(dto.contato.telefone),
             celular: this.normalizarTexto(dto.contato.celular),
           }
         : undefined,
     };
+  }
+
+  private async queryRows<T>(
+    queryRunner: QueryRunner,
+    sql: string,
+    params: unknown[],
+  ): Promise<T[]> {
+    return (await queryRunner.query(sql, params)) as T[];
   }
 
   private async obterDataSourceBancoOficial(): Promise<DataSource> {
@@ -97,7 +152,8 @@ export class ClienteService {
     queryRunner: QueryRunner,
     descricao: string,
   ): Promise<number> {
-    const cidadeExistente = await queryRunner.query(
+    const cidadeExistente = await this.queryRows<IdRow<'cidade_id'>>(
+      queryRunner,
       `
       SELECT cidade_id
       FROM cidade
@@ -112,7 +168,8 @@ export class ClienteService {
       return cidadeExistente[0].cidade_id;
     }
 
-    const cidadeCriada = await queryRunner.query(
+    const cidadeCriada = await this.queryRows<IdRow<'cidade_id'>>(
+      queryRunner,
       `
       INSERT INTO cidade (cidade_descricao)
       VALUES ($1)
@@ -128,7 +185,8 @@ export class ClienteService {
     queryRunner: QueryRunner,
     descricao: string,
   ): Promise<number> {
-    const bairroExistente = await queryRunner.query(
+    const bairroExistente = await this.queryRows<IdRow<'bairro_id'>>(
+      queryRunner,
       `
       SELECT bairro_id
       FROM bairro
@@ -143,7 +201,8 @@ export class ClienteService {
       return bairroExistente[0].bairro_id;
     }
 
-    const bairroCriado = await queryRunner.query(
+    const bairroCriado = await this.queryRows<IdRow<'bairro_id'>>(
+      queryRunner,
       `
       INSERT INTO bairro (bairro_descricao)
       VALUES ($1)
@@ -161,7 +220,8 @@ export class ClienteService {
     clienteRegistroId: string,
   ): Promise<number> {
     const contato = dto.contato;
-    const pessoaInserida = await queryRunner.query(
+    const pessoaInserida = await this.queryRows<IdRow<'pessoa_id'>>(
+      queryRunner,
       `
       INSERT INTO pessoa (
         pessoa_tipo,
@@ -220,7 +280,8 @@ export class ClienteService {
     const cidadeId = await this.obterOuCriarCidade(queryRunner, cidade);
     const bairroId = await this.obterOuCriarBairro(queryRunner, bairro);
     const estadoCodigo = (endereco?.estadoCodigo ?? uf).toUpperCase();
-    const estadoValido = await queryRunner.query(
+    const estadoValido = await this.queryRows<unknown>(
+      queryRunner,
       `
       SELECT 1
       FROM estado
@@ -366,7 +427,9 @@ export class ClienteService {
       adminEmail: dados.adminEmail,
     });
 
-    const hash = dados.adminSenha ? await bcrypt.hash(dados.adminSenha, 10) : '';
+    const hash = dados.adminSenha
+      ? await bcrypt.hash(dados.adminSenha, 10)
+      : '';
     const bancoOficial = process.env.DB_OFICIAL_NAME;
 
     if (!bancoOficial) {
@@ -430,6 +493,9 @@ export class ClienteService {
 
     return {
       message: 'Cliente registrado com sucesso',
+      mensagens: [
+        criarMensagem('Registro gravado com sucesso.', '', 'CLI_REG_OK'),
+      ],
     };
   }
 }

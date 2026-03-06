@@ -7,10 +7,48 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { AppMensagem, criarMensagem } from '../messages/message.types';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
+
+  private obterMensagens(exceptionResponse: unknown): AppMensagem[] {
+    if (typeof exceptionResponse === 'string') {
+      return [criarMensagem(exceptionResponse)];
+    }
+
+    if (
+      typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      'mensagens' in exceptionResponse &&
+      Array.isArray((exceptionResponse as { mensagens?: unknown }).mensagens)
+    ) {
+      return (exceptionResponse as { mensagens: AppMensagem[] }).mensagens;
+    }
+
+    if (
+      typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      'message' in exceptionResponse
+    ) {
+      const rawMessage = (exceptionResponse as { message?: string | string[] })
+        .message;
+      if (Array.isArray(rawMessage)) {
+        return rawMessage.map((mensagem) => criarMensagem(String(mensagem)));
+      }
+      if (typeof rawMessage === 'string') {
+        return [criarMensagem(rawMessage)];
+      }
+    }
+
+    return [
+      criarMensagem(
+        'Erro interno do servidor',
+        'Tente novamente em instantes.',
+      ),
+    ];
+  }
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -23,11 +61,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       : HttpStatus.INTERNAL_SERVER_ERROR;
     const exceptionResponse = isHttpException ? exception.getResponse() : null;
 
-    const message =
-      typeof exceptionResponse === 'string'
-        ? exceptionResponse
-        : (exceptionResponse as { message?: string | string[] })?.message ??
-          'Erro interno do servidor';
+    const mensagens = this.obterMensagens(exceptionResponse);
+    const message = mensagens[0]?.mensagem ?? 'Erro interno do servidor';
 
     const error =
       typeof exceptionResponse === 'object' &&
@@ -39,6 +74,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const body = {
       statusCode: status,
       message,
+      mensagens,
       error,
       path: request.url,
       method: request.method,

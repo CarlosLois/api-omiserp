@@ -5,6 +5,8 @@ import { CoreService } from '../../core/services/core.service';
 import { TenantConnectionService } from '../../core/services/tenant-connection.service';
 import { tenantContext } from '../context/tenant.context';
 
+const JWT_SECRET = process.env.JWT_SECRET ?? 'insecure-dev-secret';
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantMiddleware.name);
@@ -35,7 +37,7 @@ export class TenantMiddleware implements NestMiddleware {
 
       const payload = await this.jwtService.verifyAsync<{
         tenantId?: string | number;
-      }>(token, { secret: 'segredo-super-forte' });
+      }>(token, { secret: JWT_SECRET });
 
       if (!payload.tenantId) {
         next();
@@ -49,7 +51,8 @@ export class TenantMiddleware implements NestMiddleware {
         return;
       }
 
-      const dataSource = await this.tenantConnectionService.getDataSource(cliente);
+      const dataSource =
+        await this.tenantConnectionService.getDataSource(cliente);
 
       tenantContext.run(
         {
@@ -58,7 +61,7 @@ export class TenantMiddleware implements NestMiddleware {
         },
         () => next(),
       );
-    } catch (error) {
+    } catch {
       this.logger.warn(
         JSON.stringify({
           event: 'tenant_middleware_token_invalido',
